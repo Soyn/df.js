@@ -1,0 +1,18 @@
+{
+  "name": "df.js",
+  "version": "0.0.1",
+  "description": "An until function like underscore",
+  "main": "df.js",
+  "scripts": {
+    "test": "jest --runInBand --config ./jest.config.js",
+	"test:single": "jest -- --onlyChanged"
+  },
+  "keywords": [
+    "underscore"
+  ],
+  "author": "alnord",
+  "license": "MIT",
+  "devDependencies": {
+    "jest": "^21.2.1"
+  }
+}
