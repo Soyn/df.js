@@ -38,7 +38,7 @@
 // #region collection function
 // #end region
 	df.isObject = function(obj) {
-		var type = obj;
+		var type = typeof obj;
 		return type === 'function' || type === 'object' && !!obj;
 	}
 	df.identify = function(s) {
@@ -202,7 +202,6 @@
 	}
 	df.map = function(obj, iteratee, context){
 		iteratee = cb(iteratee, context);
-		console.log(iteratee);
 		var keys = !isArrayLike(obj) && df.keys(obj);
 		var length = (keys || obj).length;
 		var result = Array(length);
@@ -212,4 +211,66 @@
 		}
 		return result;
 	}
+	//collections
+	df.sortedIndex = function(array, obj, iteratee, context) {
+		iteratee = cb(iteratee, context, 1);
+		var low = 0, high = getLength(array);
+		var value = iteratee(obj);
+		while (low < high){
+			var mid = Math.floor((low + high)/2);
+			if(iteratee(mid) < value) {
+				low = mid;
+			} else {
+				high = mid;
+			}
+		}
+		return low;
+	}
+	// create a factory function to generate function
+	var createIndexFinder = function(dir, predicateFind, sortedIndex) {
+		return function(array, item, idx) {
+			var i = 0, length = getLength(array);
+			if(typeof idx == 'number') {
+				if(dir > 0) {
+					i = idx > 0 ? idx : Math.max(idx + length, i)
+				} else {
+					length = idx > 0 ? Math.min(idx + 1, length) : idx + length + 1;
+				}
+			} else {
+				if (sortedIndex && idx && length) {
+					idx = sortedIndex(array, item);
+				}
+			}
+
+			if (item !== item) {
+				idx = predicateFind(slice.call(array, i, length), df.isNaN);
+				return idx > 0 ? idx + i : -1;
+			}
+
+			for(idx = dir > 0 ? i : length - 1; idx >= 0 && idx < length; idx += dir){
+				if(array[idx] === item) return idx;
+			}
+			return -1;
+		}
+	}
+	//collections end
+
+	// array functions
+	df.findIndex = createIndexFinder(1);
+	df.indexof = createIndexFinder(1, df.findIndex, df.sortedIndex);
+	df.lastIndexOf = createIndexFinder(-1, df.findIndex, df.sortedIndex);
+	// array functions ends
+
+	// object functions
+	df.findKey = function(obj, predicate, context) {
+		predicate = cb(predicate, context);
+		var keys = df.keys(obj), key;
+		console.log('===>obj', obj)
+		for(var i = 0, length = keys.length; i < length; ++i){
+			key = keys[i];
+			console.log(key);
+			if(predicate(obj[key], key, obj)) return key;
+		}
+	}
+	// object functions ends
 }.call(this));

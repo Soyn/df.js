@@ -5,7 +5,8 @@
   "main": "df.js",
   "scripts": {
     "test": "jest --runInBand --config ./jest.config.js",
-	"test:single": "jest -- --onlyChanged"
+	"test:single": "jest -- --onlyChanged",
+	"test:debug": "node debug --debug-brk ./node_modules/jest/bin/jest.js --config ./jest.config.js"
   },
   "keywords": [
     "underscore"
