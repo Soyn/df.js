@@ -35,8 +35,6 @@
 	}
 // #end region
 
-// #region collection function
-// #end region
 	df.isObject = function(obj) {
 		var type = typeof obj;
 		return type === 'function' || type === 'object' && !!obj;
@@ -256,7 +254,19 @@
 	//collections end
 
 	// array functions
-	df.findIndex = createIndexFinder(1);
+		// 支持真值检测
+	function createPredicateIndexFinder(dir) {
+		return function (array, predicate, context) {
+			predicate = cb(predicate, context);
+			var length = getLength(array);
+			var index = dir > 0 ? 0 : length - 1;
+			for (; index > 0 && index < length; index += dir) {
+				if (predicate(array[index], index, array)) return index;
+			}
+		}
+	}
+	df.findIndex = createPredicateIndexFinder(1);
+	df.findLastIndex = createPredicateIndexFinder(1);
 	df.indexof = createIndexFinder(1, df.findIndex, df.sortedIndex);
 	df.lastIndexOf = createIndexFinder(-1, df.findIndex, df.sortedIndex);
 	// array functions ends
@@ -265,12 +275,60 @@
 	df.findKey = function(obj, predicate, context) {
 		predicate = cb(predicate, context);
 		var keys = df.keys(obj), key;
-		console.log('===>obj', obj)
 		for(var i = 0, length = keys.length; i < length; ++i){
 			key = keys[i];
-			console.log(key);
 			if(predicate(obj[key], key, obj)) return key;
 		}
 	}
+	df.values = function (obj) {
+		var keys = df.keys(obj);
+		var length = keys.length;
+		var values = Array(values);
+		for(var i = 0; i < length; ++i){
+			var key = keys[i];
+			values.push(obj[key]);
+		}
+		return values;
+	}
 	// object functions ends
+
+// #region collection function
+	df.filter = df.select = function(obj, predicate, context) {
+		predicate = cb(predicate, context);
+		var result = [];
+		var length = getLength(obj);
+		df.each(obj, function (value, index, list) {
+			if(predicate(value, index, list)) result.push(value);
+		})
+		return result;
+	}
+	df.pluck = function (obj, key) {
+		return df.map(obj, df.property(key));
+	}
+
+	df.find = df.detect = function(obj, predicate, context) {
+		var key;
+		if (!isArrayLike(obj)) {
+			key = df.findKey(obj, predicate, context);
+		} else {
+			key = df.findIndex(obj, predicate, context);
+		}
+		if (key !== void 0 && key !== -1) return obj[key]
+	}
+
+	df.where = function(obj, attrs) {
+		df.filter(obj, df.matcher(attrs));
+	}
+	df.findWhere = function(obj, attrs) {
+		df.find(obj, df.matcher(attrs));
+	}
+	df.contains = df.includes = df.include = function(obj, item, fromIndex, guard) {
+		if (!isArrayLike(obj)) obj = df.values(obj);
+		// make fromIndex correctly
+		if (typeof fromIndex !== 'number' || guard) {
+			fromIndex = 0;
+		}
+		return df.indexof(obj, item, fromIndex) >= 0;
+	}
+// #end region
 }.call(this));
