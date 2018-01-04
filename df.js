@@ -272,6 +272,14 @@
 	// array functions ends
 
 	// object functions
+	df.has = function(obj, key){
+		return obj != null && hasOwnProperty.call(obj, key);
+	}
+	if(!df.isArguments(arguments)){
+		df.isArguments = function(obj){
+			return df.has(obj, 'callee');
+		}
+	}
 	df.findKey = function(obj, predicate, context) {
 		predicate = cb(predicate, context);
 		var keys = df.keys(obj), key;
@@ -289,6 +297,9 @@
 			values.push(obj[key]);
 		}
 		return values;
+	}
+	df.isBoolean = function (obj) {
+		return obj === true || obj === false || toString.call(obj) === '[object Boolean]';
 	}
 	// object functions ends
 
@@ -330,5 +341,149 @@
 		}
 		return df.indexof(obj, item, fromIndex) >= 0;
 	}
+
+	df.max = function(obj, iteratee, context) {
+		var result = -Infinity, lastComputed = -Infinity,
+		computed, value;
+		if(iteratee == null && obj != null){
+			obj = isArrayLike(obj) ? obj : df.values(obj);
+			for(var i = 0; i < obj.length; ++i){
+				value = obj[i];
+				if(value > result) {
+					result = obj[i];
+				}
+			}
+		} else {
+			iteratee = cb(iteratee, context);
+			df.each(obj, function(value, index, list) {
+				computed = iteratee(value, index, list);
+				if(computed > lastComputed || computed === -Infinity && result === -Infinity) {
+					result = value;
+					lastComputed = computed;
+				}
+			});
+		}
+		return result;
+	}
+
+	df.min = function(obj, iteratee, context) {
+		var result = Infinity, lastComputed = Infinity,
+		value, computed;
+		if(iteratee == null && obj != null) {
+			obj = isArrayLike(obj) ? obj : df.values(obj);
+			for(var i = 0; i < obj.length; ++i){
+				value = obj[i];
+				if(value < result){
+					result = value;
+				}
+			}
+		} else {
+			iteratee = cb(iteratee, context);
+			df.each(obj, function(value, index, list){
+				computed = iteratee(value, index, list);
+				if(computed < lastComputed || computed === Infinity && result === Infinity) {
+					result = value;
+					lastComputed = computed;
+				}
+			});
+		}
+		return result;
+	}
+
+	df.invoke = function(obj, method) {
+		var args = slice.call(arguments, 2);
+		var isFunc = df.isFunction(method);
+		return df.map(obj, function(value){
+			var func = isFunc ? method : value[method];
+			return func == null ? func : func.apply(value, args);
+		})
+	}
+// #end region
+// #Array function region
+df.initial = function(array, n, guard){
+	return slice.call(array, 0, Math.max(0, array.length - (n == null || guard ? 1 : n)));
+}
+df.rest = df.drop = df.tail = function(array, n, guard){
+	return slice.call(array, n == null || guard ? 1 : n);
+}
+var flatten = function(input, shallow, strict, startIndex) {
+	var output = [], idx = 0;
+	for(var i = startIndex || 0; i < input.length; ++i){
+		var value = input[i];
+		if(df.isArrayLike(value) && (df.isArray(value) || df.isArguments(obj))){
+			
+			if(!shallow) value = flatten(value, shallow, strict);
+			var j = 0, len = value.length;
+			output.length += len;
+			while(j < len){
+				output[idx++] = value[j++]
+			}
+		} else if(!strict){
+			output[idx] = value;
+		}
+	}
+	return output;
+}
+df.flatten = function(array, shallow){
+	return flatten(array, shallow, false);
+}
+df.uniq = df.unique = function(array, isSorted, iteratee, context){
+	if(!df.isBoolean(isSorted)) {
+		context = iteratee;
+		iteratee = isSorted;
+		isSorted = false;
+	}
+	if(iteratee != null) iteratee = cb(iteratee, context);
+	var result = [];
+	var seen = [];
+
+	for (var i = 0, length = getLength(array); i < length; i++) {
+		var value = array[i],
+			computed = iteratee ? iteratee(value, i, array) : value;
+		if (isSorted) {
+			if (!i || seen !== computed) result.push(value);
+			seen = computed;
+		} else if (iteratee) {
+			if(!df.contains(seen, computed)) {
+				seen.push(computed);
+				result.push(value);
+			}
+		} else if(!df.contains(result, value)){
+			result.push(value);
+		}
+	}
+	return result;
+}
+df.union = function(){
+	return df.uniq(flatten(arguments, true, true));
+}
+df.intersection = function(array){
+	var result = [];
+	var argsLength = arguments.length;
+	for(var i = 0; i < getLength(array); ++i){
+		var item = array[i];
+		if(df.contains(result, item)) continue;
+		var j;
+		for(var j = 1; j < argsLength; ++j){
+			if(!df.contains(arguments[j], item)) break;
+		}
+		if(j === argsLength) result.push(item);
+	}
+	return result;
+}
+df.difference = function(array){
+	var rest = flatten(arguments, true, true, 1);
+	return df.filter(array, function(value){
+		return !df.contains(rest, value);
+	});
+}
+df.unzip = function(array){
+	var length = array && df.max(array, getLength).length || 0;
+	var result = Array(length);
+	for(var i = 0; i < length; ++i){
+		result[i] = df.pluck(array, i);
+	}
+	return result;
+}
 // #end region
 }.call(this));
