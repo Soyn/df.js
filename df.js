@@ -34,7 +34,11 @@
 		this._wrapper = obj;
 	}
 	// #end region
-
+	// #region utility
+	df.identity = function (value) {
+		return value;
+	}
+	// #end
 	df.isObject = function (obj) {
 		var type = typeof obj;
 		return type === 'function' || type === 'object' && !!obj;
@@ -209,7 +213,40 @@
 		}
 		return result;
 	}
-	//collections
+
+	// object functions
+	df.has = function (obj, key) {
+		return obj != null && hasOwnProperty.call(obj, key);
+	}
+	if (!df.isArguments(arguments)) {
+		df.isArguments = function (obj) {
+			return df.has(obj, 'callee');
+		}
+	}
+	df.findKey = function (obj, predicate, context) {
+		predicate = cb(predicate, context);
+		var keys = df.keys(obj), key;
+		for (var i = 0, length = keys.length; i < length; ++i) {
+			key = keys[i];
+			if (predicate(obj[key], key, obj)) return key;
+		}
+	}
+	df.values = function (obj) {
+		var keys = df.keys(obj);
+		var length = keys.length;
+		var values = Array(values);
+		for (var i = 0; i < length; ++i) {
+			var key = keys[i];
+			values.push(obj[key]);
+		}
+		return values;
+	}
+	df.isBoolean = function (obj) {
+		return obj === true || obj === false || toString.call(obj) === '[object Boolean]';
+	}
+	// object functions ends
+
+	// #region collection function
 	df.sortedIndex = function (array, obj, iteratee, context) {
 		iteratee = cb(iteratee, context, 1);
 		var low = 0, high = getLength(array);
@@ -251,59 +288,6 @@
 			return -1;
 		}
 	}
-	//collections end
-
-	// array functions
-	// 支持真值检测
-	function createPredicateIndexFinder(dir) {
-		return function (array, predicate, context) {
-			predicate = cb(predicate, context);
-			var length = getLength(array);
-			var index = dir > 0 ? 0 : length - 1;
-			for (; index > 0 && index < length; index += dir) {
-				if (predicate(array[index], index, array)) return index;
-			}
-		}
-	}
-	df.findIndex = createPredicateIndexFinder(1);
-	df.findLastIndex = createPredicateIndexFinder(1);
-	df.indexof = createIndexFinder(1, df.findIndex, df.sortedIndex);
-	df.lastIndexOf = createIndexFinder(-1, df.findIndex, df.sortedIndex);
-	// array functions ends
-
-	// object functions
-	df.has = function (obj, key) {
-		return obj != null && hasOwnProperty.call(obj, key);
-	}
-	if (!df.isArguments(arguments)) {
-		df.isArguments = function (obj) {
-			return df.has(obj, 'callee');
-		}
-	}
-	df.findKey = function (obj, predicate, context) {
-		predicate = cb(predicate, context);
-		var keys = df.keys(obj), key;
-		for (var i = 0, length = keys.length; i < length; ++i) {
-			key = keys[i];
-			if (predicate(obj[key], key, obj)) return key;
-		}
-	}
-	df.values = function (obj) {
-		var keys = df.keys(obj);
-		var length = keys.length;
-		var values = Array(values);
-		for (var i = 0; i < length; ++i) {
-			var key = keys[i];
-			values.push(obj[key]);
-		}
-		return values;
-	}
-	df.isBoolean = function (obj) {
-		return obj === true || obj === false || toString.call(obj) === '[object Boolean]';
-	}
-	// object functions ends
-
-	// #region collection function
 	df.filter = df.select = function (obj, predicate, context) {
 		predicate = cb(predicate, context);
 		var result = [];
@@ -400,6 +384,20 @@
 	}
 	// #end region
 	// #Array function region
+	function createPredicateIndexFinder(dir) {
+		return function (array, predicate, context) {
+			predicate = cb(predicate, context);
+			var length = getLength(array);
+			var index = dir > 0 ? 0 : length - 1;
+			for (; index > 0 && index < length; index += dir) {
+				if (predicate(array[index], index, array)) return index;
+			}
+		}
+	}
+	df.findIndex = createPredicateIndexFinder(1);
+	df.findLastIndex = createPredicateIndexFinder(1);
+	df.indexof = createIndexFinder(1, df.findIndex, df.sortedIndex);
+	df.lastIndexOf = createIndexFinder(-1, df.findIndex, df.sortedIndex);
 	df.initial = function (array, n, guard) {
 		return slice.call(array, 0, Math.max(0, array.length - (n == null || guard ? 1 : n)));
 	}
@@ -484,6 +482,48 @@
 			result[i] = df.pluck(array, i);
 		}
 		return result;
+	}
+	df.zip = function (array) {
+		return df.unzip(arguments);
+	}
+	df.compact = function (array) {
+		return df.filter(array, df.identity)
+	}
+	df.object = function(list, values){
+		var result = {};
+		for(var i = 0; i < getLength(list); ++i){
+			if(values){
+				result[list[i]] = values[i];
+			} else {
+				result[list[i][0]] = list[i][1];
+			}
+		}
+		return result;
+	}
+	df.range = function(start, stop, step) {
+		if(stop == null){
+			stop = start || 0;
+			start = 0;
+		}
+		if(!step){
+			step = stop < start ? -1 : 1;
+		}
+		var length = Math.max(Math.ceil((stop - start) / step), 0);
+		var range = Array(length);
+
+		for(var i = 0; i < length; i++, start += step) {
+			range [i] = start;
+		}
+		return range;
+	}
+	df.chunk = function(array, count) {
+		if(count == null || count < 1) return [];
+
+		var result = [];
+		var i = 0, length = array.length;
+		while(i < length) {
+			result.push(slice.call(array, i, i += count));
+		}
 	}
 	// #end region
 }.call(this));
