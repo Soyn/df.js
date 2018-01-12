@@ -526,4 +526,63 @@
 		}
 	}
 	// #end region
+
+	// #region Function Functions
+	var executeBound = function(sourceFunc, boundFunc, context, callingContext, args) {
+		if(!(callingContext instanceof boundFunc)) return sourceFunc.apply(context, args);
+		var self = baseCreate(sourceFunc.prototype);
+		// for chain-style calling
+		var result = sourceFunc.apply(self, args);
+		if(df.isObject(result)) return result;
+		return self;
+	}
+	df.bind = function (func, context) {
+		if(nativeBind && func.bind === nativeBind) return nativeBind.apply(func, slice.call(arguments, 1));
+		if(!df.isFunction(func)) throw new TypeError("Bind must be called on a function");
+		var args = slice.call(arguments, 2);
+		var bound = function() {
+			return executeBound(func, bound, context, this, args.concat(slice.call(arguments)));
+		}
+		return bound;
+	}
+	df.bindAll = function(obj) {
+		var i, length = arguments.length, key;
+		if(length <= 1) throw new Error('bindAll must be passed function names');
+		for(i = 0; i < length; ++i){
+			key = arguments[i];
+			df.bind(obj[key], obj);
+		}
+		return obj;
+	}
+	df.partial = function(func, boundArgs) {
+		var placeholder = df.partial.placeholder;
+		var bound = function(){
+			var position = 0, length = boundArgs.length;
+			var args = Array(length);
+
+			for(var i = 0; i < length; ++i){
+				args[i] = boundArgs[i] === placeholder ? arguments[position++] : boundArgs[i];
+			}
+			while(position < arguments.length) args.push(arguments[position++]);
+			return executeBound(func, bound, this, this, args);
+		}
+		return bound;
+	}
+	df.memoize = function(func, hasher) {
+		var memoize = function(key) {
+			var cache = memoize.cache;
+			var address = '' + (hasher ? hasher.apply(arguments) : key);
+			if(!df.has(cache, address)) cache[address] = func.apply(this, arguments);
+			return cache[address];
+		}
+		memoize.cache = {};
+		return memoize;
+	}
+	df,delay = restArgs(function(func, wait, args){
+		return setTimeout(function(){
+			func.apply(null, args);
+		}, wait);
+	});
+	df.defer = df.partial(df.delay, _, 1);
+	// #end
 }.call(this));
