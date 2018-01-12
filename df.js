@@ -43,8 +43,8 @@
 		var type = typeof obj;
 		return type === 'function' || type === 'object' && !!obj;
 	}
-	df.identify = function (s) {
-		return s;
+	df.now = Data.now() || function () {
+		return new Date().getTime();
 	}
 	df.isFunction = function (f) {
 		return typeof f == 'function' || false;
@@ -489,10 +489,10 @@
 	df.compact = function (array) {
 		return df.filter(array, df.identity)
 	}
-	df.object = function(list, values){
+	df.object = function (list, values) {
 		var result = {};
-		for(var i = 0; i < getLength(list); ++i){
-			if(values){
+		for (var i = 0; i < getLength(list); ++i) {
+			if (values) {
 				result[list[i]] = values[i];
 			} else {
 				result[list[i][0]] = list[i][1];
@@ -500,30 +500,194 @@
 		}
 		return result;
 	}
-	df.range = function(start, stop, step) {
-		if(stop == null){
+	df.range = function (start, stop, step) {
+		if (stop == null) {
 			stop = start || 0;
 			start = 0;
 		}
-		if(!step){
+		if (!step) {
 			step = stop < start ? -1 : 1;
 		}
 		var length = Math.max(Math.ceil((stop - start) / step), 0);
 		var range = Array(length);
 
-		for(var i = 0; i < length; i++, start += step) {
-			range [i] = start;
+		for (var i = 0; i < length; i++ , start += step) {
+			range[i] = start;
 		}
 		return range;
 	}
-	df.chunk = function(array, count) {
-		if(count == null || count < 1) return [];
+	df.chunk = function (array, count) {
+		if (count == null || count < 1) return [];
 
 		var result = [];
 		var i = 0, length = array.length;
-		while(i < length) {
+		while (i < length) {
 			result.push(slice.call(array, i, i += count));
 		}
 	}
 	// #end region
+
+	// #region Function Functions
+	var executeBound = function (sourceFunc, boundFunc, context, callingContext, args) {
+		if (!(callingContext instanceof boundFunc)) return sourceFunc.apply(context, args);
+		var self = baseCreate(sourceFunc.prototype);
+		// for chain-style calling
+		var result = sourceFunc.apply(self, args);
+		if (df.isObject(result)) return result;
+		return self;
+	}
+	df.bind = function (func, context) {
+		if (nativeBind && func.bind === nativeBind) return nativeBind.apply(func, slice.call(arguments, 1));
+		if (!df.isFunction(func)) throw new TypeError("Bind must be called on a function");
+		var args = slice.call(arguments, 2);
+		var bound = function () {
+			return executeBound(func, bound, context, this, args.concat(slice.call(arguments)));
+		}
+		return bound;
+	}
+	df.bindAll = function (obj) {
+		var i, length = arguments.length, key;
+		if (length <= 1) throw new Error('bindAll must be passed function names');
+		for (i = 0; i < length; ++i) {
+			key = arguments[i];
+			df.bind(obj[key], obj);
+		}
+		return obj;
+	}
+	df.partial = function (func, boundArgs) {
+		var placeholder = df.partial.placeholder;
+		var bound = function () {
+			var position = 0, length = boundArgs.length;
+			var args = Array(length);
+
+			for (var i = 0; i < length; ++i) {
+				args[i] = boundArgs[i] === placeholder ? arguments[position++] : boundArgs[i];
+			}
+			while (position < arguments.length) args.push(arguments[position++]);
+			return executeBound(func, bound, this, this, args);
+		}
+		return bound;
+	}
+	df.memoize = function (func, hasher) {
+		var memoize = function (key) {
+			var cache = memoize.cache;
+			var address = '' + (hasher ? hasher.apply(arguments) : key);
+			if (!df.has(cache, address)) cache[address] = func.apply(this, arguments);
+			return cache[address];
+		}
+		memoize.cache = {};
+		return memoize;
+	}
+	df, delay = restArgs(function (func, wait, args) {
+		return setTimeout(function () {
+			func.apply(null, args);
+		}, wait);
+	});
+	df.defer = df.partial(df.delay, _, 1);
+	df.throttle = function (func, wait, options) {
+		var timeout, context, args, result;
+		var previous = 0;
+		if (!options) options = {};
+
+		var later = function () {
+			previous = options.leading === false ? 0 : df.now();
+			timeout = null;
+			result = func.apply(context, args);
+			if (!timeout) context = args = null;
+		}
+
+		var throttled = function () {
+			var now = df.now();
+			if (!previous && options.leading === false) previous = now;
+			var remaining = wait - (now - previous);
+			context = this;
+			args = arguments;
+
+			if (remaining <= 0 || remaining > wait) {
+				if (timeout) {
+					clearTimeout(timeout);
+					timeout = null;
+				}
+				previous = now;
+				result = func.apply(context, args);
+				if (!timeout) context = args = null;
+			} else if (!timeout && options.trailing !== false) {
+				timeout = setTimeout(later, remaining);
+			}
+			return result;
+		}
+		throttled.cancel = function () {
+			clearTimeout(timeout);
+			previous = 0;
+			timeout = context = args = null;
+		}
+		return throttled;
+	}
+	df.debounce = function (func, wait, immediate) {
+		var timeout, result;
+		var later = function (context, args) {
+			timeout = null;
+			if (args) result = func.apply(context, args);
+		}
+
+		var debounce = restArgs(function (args) {
+			if (timeout) clearTimeout(timeout);
+			if (immediate) {
+				var callNow = !timeout;
+				timeout = setTimeout(later, wait);
+				if (callNow) result = func.apply(this, args);
+			} else {
+				result = df.delay(later, wait, this, args);
+			}
+			return result;
+		});
+		debounce.cancel = function () {
+			clearTimeout(timeout);
+			timeout = null;
+		}
+		return debounce;
+	}
+	df.compose = function () {
+		var args = arguments;
+		var start = args.length - 1;
+		return function () {
+			var i = start;
+			var result = args[start].apply(this, arguments);
+			while (i--) {
+				result = args[i].apply(this, result);
+			}
+			return result;
+		};
+	}
+	df.pipe = function () {
+		var args = slice(this, arguments);
+		return function () {
+			var result = slice.apply(this, arguments);
+			return args.reduce(function (result, func, index) {
+				return func.apply(this, result);
+			}, result);
+		}
+	}
+	df.after = function (times, func) {
+		return function () {
+			if (--times < 1) {
+				return func.apply(this, arguments);
+			}
+		};
+	}
+	df.before = function (times, func) {
+		var memo;
+		return function () {
+			if (--times > 0) {
+				memo = func.apply(this, arguments);
+			}
+			if (times <= 1) func = null;
+			return memo;
+		}
+	}
+	df.once = df.partial(df.before, 2);
+	df.wrap = function(func, wrapper){
+		return df.partial(wrapper, func);
+	}
+	// #end
 }.call(this));
