@@ -34,28 +34,49 @@
 		this._wrapper = obj;
 	}
 	// #end region
-	// #region utility
+	// #region utility Functions
+	df.noConflict = function () {
+		root.df = previousDf;
+		return this;
+	}
+	df.constant = function (value) {
+		return function () {
+			return value;
+		}
+	}
+	df.noop = function() {}
 	df.identity = function (value) {
 		return value;
+	}
+	df.propertyOf = function (obj) {
+		return obj == null ? function () { } : function (key) {
+			return obj[key];
+		};
+	};
+	df.times = function(n, iteratee, context) {
+		var accum = Array.max(0, n);
+		iteratee = optimizeCb(iteratee, context, 1);
+		for(var i = 0; i < n; i++) accum[i] = iteratee[i];
+		return accum;
+	}
+	df.random = function (min, max) {
+		if (max == null) {
+			max = min;
+			min = 0;
+		}
+		return min + Math.floor(Math.random() * (max - min + 1));
+	}
+	df.now = Data.now() || function () {
+		return new Date().getTime();
 	}
 	// #end
 	df.isObject = function (obj) {
 		var type = typeof obj;
 		return type === 'function' || type === 'object' && !!obj;
 	}
-	df.now = Data.now() || function () {
-		return new Date().getTime();
-	}
+
 	df.isFunction = function (f) {
 		return typeof f == 'function' || false;
-	}
-	df.keys = function (obj) {
-		if (!df.isObject(obj)) return [];
-		if (nativeKeys) return nativeKeys(obj);
-		var keys = [];
-
-		for (var key in obj) keys.push(key);
-		return keys;
 	}
 	var optimizeCb = function (func, context, argCount) {
 		if (context === void 0) return func;
@@ -214,7 +235,46 @@
 		return result;
 	}
 
-	// object functions
+	// #region objects functions
+	df.has = function (obj, key) {
+		return obj != null && hasOwnProperty.call(obj, key);
+	}
+	var nonEnumerableProps = ['valueOf', 'isPrototypeOf', 'toString', 'propertyIsEnumerable',
+		'hasOwnProperty', 'toLocaleString'];
+	var hasEnumBug = !{ toString: null }.propertyIsEnumerable('toString');
+	function collectionNonEnumProps(obj, keys) {
+		var nonEnumIndex = nonEnumerableProps.length;
+		var constructor = obj.constructor;
+		var proto = (df.isFunction(constructor) && constructor.prototype) || ObjProto;
+
+		var prop = 'constructor';
+		if (df.has(obj, prop) && !(df.contains(keys, prop))) keys.push(prop);
+
+		while (nonEnumIndex--) {
+			prop = nonEnumerableProps[nonEnumIndex];
+			if (prop in obj && obj[prop] !== proto[prop] && !df.contains(keys, prop)) {
+				keys.push(prop);
+			}
+		}
+	}
+	df.keys = function (obj) {
+		if (!df.isObject(obj)) return [];
+		var keys = [];
+		for (key in obj) {
+			if (df.has(obj, key))
+				keys.push(key);
+		}
+		if (hasEnumBug) collectionNonEnumProps(obj, keys);
+		return keys;
+	}
+	df.allKeys = function (obj) {
+		if (!df.isObject(obj)) return [];
+		var keys = [];
+		for (key in obj) keys.push(key);
+
+		if (hasEnumBug) collectionNonEnumProps(obj, keys);
+		return keys;
+	}
 	df.has = function (obj, key) {
 		return obj != null && hasOwnProperty.call(obj, key);
 	}
@@ -241,10 +301,170 @@
 		}
 		return values;
 	}
+	df.invert = function (obj) {
+		var result = {};
+		var keys = df.keys(obj);
+		for (var i = 0; i < keys.length; ++i) {
+			result[obj[keys[i]]] = keys[i];
+		}
+		return result;
+	}
+	df.functions = function (obj) {
+		var names = [];
+		for (key in obj) {
+			if (df.isFunction(obj[key])) {
+				names[key] = obj[key];
+			}
+		}
+		return names.sort();
+	}
+	df.extend = createAssigner(df.allKeys);
+	df.extendOwn = createAssigner(df.keys);
+	df.defaults = createAssigner(df.allKeys, true);
+	df.clone = function (obj) {
+		if (!df.isObject(obj)) return obj;
+
+		return df.isArray(obj) ? obj.slice() : df.extend({}, obj);
+	}
+	df.pick = function (object, oiteratee, context) {
+		var result = {}, obj = object, iteratee, keys;
+		if (obj == null) return result;
+		if (df.isFunction(oiteratee)) {
+			keys = df.allKeys(obj);
+			iteratee = optimizeCb(oiteratee, context)
+		} else {
+			keys = flatten(arguments, false, false, 1);
+			iteratee = function (value, key, obj) { return key in obj; }
+			obj = Object(obj);
+		}
+		for (var i = 0, length = keys.length; i < length; ++i) {
+			var key = keys[i];
+			var value = obj[key];
+			if (iteratee(value, key, obj)) result[key] = value;
+		}
+		return value;
+	}
+	df.omit = function (obj, iteratee, context) {
+		if (df.isFunction(iteratee)) {
+			iteratee = df.negate(iteratee)
+		} else {
+			keys = df.map(flatten(arguments, false, false, 1), String);
+			iteratee = function (value, key) {
+				return !df.contains(keys, key);
+			};
+		}
+		return df.pick(obj, iteratee, context);
+	}
 	df.isBoolean = function (obj) {
 		return obj === true || obj === false || toString.call(obj) === '[object Boolean]';
 	}
-	// object functions ends
+	var eq = function (a, b, aStack, bStack) {
+		if (a === b) return a !== 0 || 1 / a === 1 / b;
+
+		if (a == null || b == null) return a === b;
+
+		if (a == null || b == null) return a === b;
+
+		var type = typeof a;
+		if (type !== 'function' && type !== 'object' && typeof b != 'object') return false;
+		return deepEqual(a, b, aStack, bStack);
+	}
+	var deepEqual = function (a, b, aStack, bStack) {
+		var className = toString.call(a);
+		if (className !== toString.call(b)) return false;
+
+		switch (className) {
+			case '[object RegExp]':
+			case '[object String]':
+				return '' + a === '' + b;
+			case '[object Numebr]':
+				if (+a !== +a) return +b !== +b;
+				return +a === 0 ? 1 / +a === 1 / b : +a === +b;
+			case '[object Data]':
+			case '[object Boolean]':
+				return +a === + b;
+			case '[object Symbol]':
+				return SymbolProto.valueof.call(a) === SymbolProto.valueof.call(b);
+		}
+
+		var areArrays = className === '[object Array]';
+		if (!areArrays) {
+			if (typeof a != 'object' || typeof b != object) return false;
+
+			var aCtor = a.constructor, bCtor = b.constructor;
+			if (aCtor !== bCtor && !(df.isFunction(aCtor) && aCtor instanceof aCtor &&
+				df.isFunction(bCtor) && bCtor instanceof bCtor)
+				&& ('constructor' in a && 'constructor' in b)) {
+				return false;
+			}
+		}
+
+		aStack = aStack || [];
+		bStack = bStack || [];
+		var length = aStack.length;
+		while (length--) {
+			if (aStack[length] === a) return bStack[length] === b;
+		}
+		aStack.push(a);
+		aStack.push(b);
+
+		if (areArrays) {
+			length = a.length;
+			if (length !== b.length) return false;
+			while(length) {
+				if(!eq(a[length], b[length], aStack, bStack)) return false;
+			}
+		} else {
+			var keys = df.keys(a), key;
+			length = keys.length;
+
+			if(df.keys(b).length !== length) return false;
+			while(length--){
+				key = keys[length];
+				if(!(df.has(b, key) && eq(a[key], b[key], aStack, bStack))) return false;
+			}
+		}
+		aStack.pop();
+		bStack.pop();
+		return true;
+	}
+	df.isEqual = function (a, b) {
+		return eq(a, b);
+	}
+	df.each(['Arguments', 'Function', 'String', 'Number', 'Date', 'RegExp',
+	'Error', 'Symbol', 'Map', 'WeakMap', 'Set', 'WeakSet'], function (name) {
+		df['is' + name] = function(obj){
+			return toString.call(obj) === '[object ' + name +']';
+		};
+	});
+
+	if(!isArguments(arguments)) {
+		df.isArguments = function(obj) {
+			return df.has(obj, 'callee');
+		};
+	}
+	df.isElement = function (obj) {
+		return !! (obj && obj.nodeType === 1);
+	}
+	df.isArray = nativeIsArray || function (obj) {
+		return toString.call(obj) === '[object Array]';
+	}
+	df.isFinite = function (obj) {
+		return isFinite(obj) && !isNaN(parseFloat(obj));
+	}
+	df.isNaN = function (obj) {
+		return df.isNumber(obj) && isNaN(obj);
+	}
+	df.isBoolean = function(obj) {
+		return obj === false || obj === true || toString.call(obj) === '[object Boolean]';
+	}
+	df.isNull = function(obj) {
+		return obj === null;
+	}
+	df.isUndefined = function (obj) {
+		return obj === void 0;
+	}
+	// #region object functions
 
 	// #region collection function
 	df.sortedIndex = function (array, obj, iteratee, context) {
@@ -536,6 +756,11 @@
 		if (df.isObject(result)) return result;
 		return self;
 	}
+	df.negate = function (predicate) {
+		return function () {
+			return !predicate.apply(this, arguments);
+		}
+	}
 	df.bind = function (func, context) {
 		if (nativeBind && func.bind === nativeBind) return nativeBind.apply(func, slice.call(arguments, 1));
 		if (!df.isFunction(func)) throw new TypeError("Bind must be called on a function");
@@ -686,7 +911,7 @@
 		}
 	}
 	df.once = df.partial(df.before, 2);
-	df.wrap = function(func, wrapper){
+	df.wrap = function (func, wrapper) {
 		return df.partial(wrapper, func);
 	}
 	// #end
